@@ -135,8 +135,8 @@ class Runner implements ApplicationRunner{
         log.info("current state: " + machine.getState().getId().name());
         
        
-        System.out.println("Waiting 30 seconds...");
-        Thread.sleep(30000);                            // time to run the program
+        System.out.println("Waiting 20 seconds...");
+        Thread.sleep(20000);                            // time to run the program
         
         machine.sendEvent(Events.CANCELLED_REQUEST);        // emulating being cancelled by the user and stopping the timer
         //Thread.sleep(10000);
