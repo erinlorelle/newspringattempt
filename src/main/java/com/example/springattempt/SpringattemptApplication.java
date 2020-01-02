@@ -21,6 +21,7 @@ import org.springframework.statemachine.config.StateMachineFactory;
 import org.springframework.statemachine.config.builders.StateMachineConfigurationConfigurer;
 import org.springframework.statemachine.config.builders.StateMachineStateConfigurer;
 import org.springframework.statemachine.config.builders.StateMachineTransitionConfigurer;
+import org.springframework.statemachine.guard.Guard;
 import org.springframework.statemachine.listener.StateMachineListenerAdapter;
 import org.springframework.statemachine.state.State;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,7 @@ import java.sql.Time;       // added to play with timers
 import java.time.*;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Random;
 import java.util.concurrent.ThreadPoolExecutor;
 
 @SpringBootApplication
@@ -38,7 +40,7 @@ public class SpringattemptApplication
     {
         SpringApplication.run(SpringattemptApplication.class, args);    // running the machine
         
-        System.out.println("Hello World");  // displaying output to test machine
+        //System.out.println("Hello World");  // displaying output to test machine
     }
     
 }
@@ -65,7 +67,7 @@ enum Events {
     NOT_SAFE,
     THROUGH_INTERSECTION,
     OUT_OF_RANGE,
-    SIGNAL_UI_STANDBY
+    SIGNAL_UI_STANDBY,
 }
 
 /**
@@ -135,8 +137,8 @@ class Runner implements ApplicationRunner{
         log.info("current state: " + machine.getState().getId().name());
         
        
-        System.out.println("Waiting 20 seconds...");
-        Thread.sleep(20000);                            // time to run the program
+        System.out.println("Waiting 15 seconds...");
+        Thread.sleep(15000);                           // time to run the program
         
         machine.sendEvent(Events.CANCELLED_REQUEST);        // emulating being cancelled by the user and stopping the timer
         //Thread.sleep(10000);
@@ -169,7 +171,7 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                 
                 // main thread
                 .withExternal()
-                .source(States.INITIAL_STATE).target(States.DEVICE_ACTIVATED).event(Events.ACTIVATE_DEVICE)
+                .source(States.INITIAL_STATE).target(States.DEVICE_ACTIVATED).event(Events.ACTIVATE_DEVICE).guard(fromInitialState())
                 .and()
                 
                 // forking to 3 threads
@@ -179,22 +181,30 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                 // timer thread
                 .withExternal().source(States.TIMER_ACTIVATED).target(States.TIMER_ENDED).event(Events.CANCELLED_REQUEST)
                 .and()
+        
+                // SPaT thread
+                .withExternal().source(States.SPAT_ACTIVATED).target(States.SPAT_STANDBY)//.event(Events.ACTIVATE_SPAT_STANDBY)  //Why the crap don't you work???
+                .and()
                 
                 // UI thread
                 .withExternal().source(States.UI_ACTIVATED).target(States.UI_STANDBY).event(Events.ACTIVATE_UI_STANDBY)
                 .and()
-                    .withExternal().source(States.UI_STANDBY).target(States.UI_DISPLAY_WAITING).event(Events.SPAT_READY_FOR_UI_DISPLAY)
-                    .and()
-                
-                // SPaT thread
-                .withExternal().source(States.SPAT_ACTIVATED).target(States.SPAT_STANDBY)//.event(Events.ACTIVATE_SPAT_STANDBY)
+                .withExternal().source(States.UI_STANDBY).target(States.UI_DISPLAY_WAITING).event(Events.SPAT_READY_FOR_UI_DISPLAY)
                 .and()
-                
+                .withExternal().source(States.UI_DISPLAY_WAITING).target(States.DISPLAY_SPEED_RANGE).event(Events.DATA_RECEIVED_FROM_SPAT).guard(displayGuard())
+                .and()
+                .withExternal().source(States.UI_DISPLAY_WAITING).target(States.DISPLAY_STOP).event(Events.DATA_RECEIVED_FROM_SPAT).guard(stopGuard())
+                .and()
+                .withExternal().source(States.DISPLAY_SPEED_RANGE).target(States.INTERSECTION_COMPLETE).event(Events.SPAT_SIGNALED_INTERSECTION_COMPLETE)
+                .and()
+                .withExternal().source(States.DISPLAY_STOP).target(States.INTERSECTION_COMPLETE).event(Events.SPAT_SIGNALED_INTERSECTION_COMPLETE)
+                .and()
+        
                 // joining all threads
-                .withJoin().source(States.SPAT_STANDBY).source(States.UI_DISPLAY_WAITING).source(States.TIMER_ENDED).target(States.SHUTDOWN_INITIATED)
+                .withJoin().source(States.SPAT_STANDBY).source(States.INTERSECTION_COMPLETE).source(States.TIMER_ENDED).target(States.SHUTDOWN_INITIATED)
                 .and()
                 .withExternal().source(States.SHUTDOWN_INITIATED).target(States.DEVICE_DEACTIVATED).event(Events.SHUTDOWN_CONFIRMED);
-        
+    
     }
     
     /**
@@ -218,26 +228,29 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                 .state(States.UI_DEACTIVATED)
                 .state(States.TRIGGER_ADV_CYCLE)
                 .end(States.DEVICE_DEACTIVATED)
-                .stateEntry(States.DEVICE_DEACTIVATED, deactAction()) // final state
+                    .stateEntry(States.DEVICE_DEACTIVATED, deactAction()) // final state
                 .and()
                 
                 // timer thread
                 .withStates()
-                    .parent(States.UI_SPAT_PARENT)
-                    .initial(States.TIMER_ACTIVATED)
-                        .stateEntry(States.TIMER_ACTIVATED, timerActAction())
-                    .end(States.TIMER_ENDED)
-                        .stateEntry(States.TIMER_ENDED, timerEndAction())
-                    .and()
+                .parent(States.UI_SPAT_PARENT)
+                .initial(States.TIMER_ACTIVATED)
+                    .stateEntry(States.TIMER_ACTIVATED, timerActAction())
+                .end(States.TIMER_ENDED)
+                    .stateEntry(States.TIMER_ENDED, timerEndAction())
+                .and()
                 
                 // UI thread
                 .withStates()
-                    .parent(States.UI_SPAT_PARENT)
-                    .initial(States.UI_ACTIVATED)
-                        .stateEntry(States.UI_ACTIVATED,uiActvAction())
-                    .state(States.UI_STANDBY, uiStandbyAction())
-                    .end(States.UI_DISPLAY_WAITING)
-                        .stateEntry(States.UI_DISPLAY_WAITING, uiDisplWAction())
+                .parent(States.UI_SPAT_PARENT)
+                .initial(States.UI_ACTIVATED)
+                .stateEntry(States.UI_ACTIVATED,uiActvAction())
+                .state(States.UI_STANDBY, uiStandbyAction())
+                .state(States.UI_DISPLAY_WAITING, uiDisplWAction())
+                .state(States.DISPLAY_SPEED_RANGE, uiSpeedRange())
+                .state(States.DISPLAY_STOP, uiStop())
+                    .end(States.INTERSECTION_COMPLETE)
+                        .stateEntry(States.INTERSECTION_COMPLETE, interComplete())
                     .and()
                 
                 // SPaT Thread
@@ -286,6 +299,64 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
         return taskExecutor;
     }
     
+    /************************************************************************
+     * The following are GUARDS which are used to protect state transitions
+     ************************************************************************/
+    @Bean
+    public Guard<States, Events> fromInitialState() {
+        return new Guard<States, Events>()
+        {
+            @Override
+            public boolean evaluate(StateContext<States, Events> context)
+            {
+                System.out.println("\n***GUARD: from Initial State***\n");
+                return true;
+            }
+        };
+    }
+    
+    @Bean
+    public Guard<States, Events> displayGuard() {
+        return new Guard<States, Events>()
+        {
+            @Override
+            public boolean evaluate(StateContext<States, Events> context)
+            {
+                System.out.println("\n***GUARD: Display Speed***\n");
+                return true;    // keep true - will only go here if stopGuard is false (NUM is EVEN)
+            }
+        };
+    }
+    
+    @Bean
+    public Guard<States, Events> stopGuard() {
+        return new Guard<States, Events>()
+        {
+            @Override
+            public boolean evaluate(StateContext<States, Events> context)
+            {
+                System.out.println("\n***GUARD: Display Stop***\n");
+                
+                // some condition math stuff here
+                
+                Random random = new Random();
+                int num = random.nextInt();
+                System.out.println("\n*Random number is: " + num);
+                
+                if(num % 2 == 0)
+                {
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+        };
+    }
+    
+    
+    
     /*******************************************************************
      * The following are ACTIONS that are called from the above states
      *******************************************************************/
@@ -301,7 +372,7 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                 System.out.print("\nTimer Activated\n\n");
     
                 // triggers event for Timer Ended
-                //context.getStateMachine().sendEvent(Events.CANCELLED_REQUEST);
+                 //context.getStateMachine().sendEvent(Events.CANCELLED_REQUEST);
                 
             }
         };
@@ -315,11 +386,11 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
             @Override
             public void execute(StateContext<States, Events> context) {
                 
-                System.out.print("\nTimer Ended");
+                System.out.print("\n*Cancelled Request* - Timer Ended");
                 long finish = System.currentTimeMillis();
                 long timeElapsed = finish - start;
                 System.out.print("\nElapsed Time is " + timeElapsed + "ms\n\n");
-                context.getStateMachine().stop();
+                //context.getStateMachine().stop();
             }
         };
     }
@@ -336,8 +407,8 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                     System.out.print("\nUI Activated Started\n\n");
                     for(int i = 100; i <= 149; i++) {
                         if(i % 3 == 0){
-                            System.out.println("Waiting 1 seconds...");
-                            Thread.sleep(1000);
+                            System.out.println("Waiting .25 seconds...");
+                            Thread.sleep(250);
                         }
                         System.out.print(i + " ");
                     }
@@ -347,7 +418,7 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                     context.getStateMachine().sendEvent(Events.ACTIVATE_UI_STANDBY);
                 }
                 catch(Exception e){
-                    System.out.println("Oops..error");
+                    System.out.println("Oops..error: " + e);
                 }
             }
         };
@@ -366,8 +437,8 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                     System.out.print("\nUI Standby Started\n\n");
                     for(int i = 300; i <= 349; i++) {
                         if(i % 5 == 0){
-                            System.out.println("Waiting 1 seconds...");
-                            Thread.sleep(1000);
+                            System.out.println("Waiting .25 seconds...");
+                            Thread.sleep(250);
                         }
                         System.out.print(i + " ");
                     }
@@ -377,7 +448,7 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                     context.getStateMachine().sendEvent(Events.SPAT_READY_FOR_UI_DISPLAY);
                 }
                 catch(Exception e){
-                    System.out.println("Oops..error");
+                    System.out.println("Oops..error: " + e);
                 }
             }
         };
@@ -394,21 +465,112 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                 try
                 {
                     System.out.print("\nUI Display Waiting Started\n\n");
-                    for(int i = 500; i <= 549; i++) {
+                    for(int i = 700; i <= 749; i++) {
                         if(i % 4 == 0){
-                            System.out.println("Waiting 1 seconds...");
-                            Thread.sleep(1000);
+                            System.out.println("Waiting .25 seconds...");
+                            Thread.sleep(250);
                         }
                         System.out.print(i + " ");
                     }
                     System.out.print("\nUI Display Waiting Done\n\n");
-                    context.getStateMachine().sendEvent(Events.CANCELLED_REQUEST);
+                    context.getStateMachine().sendEvent(Events.DATA_RECEIVED_FROM_SPAT);
                 }
                 catch(Exception e){
-                    System.out.println("Oops..error");
+                    System.out.println("Oops..error: " + e);
                 }
                 
             }
+        };
+    }
+    
+    /** ACTION for UI Display Speed Range called from states **/
+    @Bean
+    public Action<States, Events> uiSpeedRange() {
+        return new Action<States, Events>() {
+            
+            @Override
+            public void execute(StateContext<States, Events> context) {
+                
+                try
+                {
+                    System.out.print("\nUI Speed Range Started\n\n");
+                    for(int i = 800; i <= 849; i++) {
+                        if(i % 4 == 0){
+                            System.out.println("Waiting .25 seconds...");
+                            Thread.sleep(250);
+                        }
+                        System.out.print(i + " ");
+                    }
+                    System.out.print("\nUI Speed Range Done\n\n");
+                    context.getStateMachine().sendEvent(Events.SPAT_SIGNALED_INTERSECTION_COMPLETE);
+                }
+                catch(Exception e){
+                    System.out.println("Oops..error: " + e);
+                }
+                
+            }
+        };
+    }
+    
+    /** ACTION for UI Display Stop called from states **/
+    @Bean
+    public Action<States, Events> uiStop() {
+        return new Action<States, Events>() {
+            
+            @Override
+            public void execute(StateContext<States, Events> context) {
+                
+                try
+                {
+                    System.out.print("\nUI Display Stop Started\n\n");
+                    for(int i = 900; i <= 949; i++) {
+                        if(i % 4 == 0){
+                            System.out.println("Waiting .25 seconds...");
+                            Thread.sleep(250);
+                        }
+                        System.out.print(i + " ");
+                    }
+                    System.out.print("\nUI Display Stop Done\n\n");
+                    context.getStateMachine().sendEvent(Events.SPAT_SIGNALED_INTERSECTION_COMPLETE);
+                }
+                catch(Exception e){
+                    System.out.println("Oops..error: " + e);
+                }
+                
+            }
+        };
+    }
+    
+    /** ACTION for Intersection Complete called from states **/
+    @Bean
+    public Action<States, Events> interComplete() {
+        return new Action<States, Events>() {
+            
+            @Override
+            public void execute(StateContext<States, Events> context) {
+                
+                try
+                    {
+                        System.out.print("\nUI Intersection Complete Started\n\n");
+                        for(int i = 900; i <= 949; i++)
+                        {
+                            if(i % 4 == 0)
+                            {
+                                System.out.println("Waiting .25 seconds...");
+                                Thread.sleep(250);
+                            }
+                            System.out.print(i + " ");
+                        }
+                        System.out.print("\nUI Intersection Complete Done\n\n");
+                        //context.getStateMachine().sendEvent(Events.CANCELLED_REQUEST);
+                    }
+                    catch(Exception e)
+                    {
+                        System.out.println("Oops..error: " + e);
+                        //Thread.currentThread().interrupt(); // restore interrupted status
+                        /*throw new RuntimeException(e);*/
+                    }
+                }
         };
     }
     
@@ -425,19 +587,19 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                     System.out.print("\nSPaT Activated Started\n\n");
                     for(int i = 200; i <= 249; i++) {
                         if(i % 4 == 0){
-                            System.out.println("Waiting 1 seconds...");
-                            Thread.sleep(1000);
+                            System.out.println("Waiting .25 seconds...");
+                            Thread.sleep(250);
                         }
                         System.out.print(i + " ");
                         
                     }
                     System.out.print("\nSPaT Activated Done\n\n");
-    
-                    // triggers event for SPaT Standby
+                    
                     context.getStateMachine().sendEvent(Events.ACTIVATE_SPAT_STANDBY);
+                  
                 }
                 catch(Exception e){
-                    System.out.println("Oops..error");
+                    System.out.println("Oops..error: " + e);
                 }
                 
             }
@@ -458,15 +620,15 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
                     System.out.print("\nSPaT Standby Started\n\n");
                     for(int i = 400; i <= 449; i++) {
                         if(i % 6 == 0){
-                            System.out.println("Waiting 1 seconds...");
-                            Thread.sleep(1000);
+                            System.out.println("Waiting .25 seconds...");
+                            Thread.sleep(250);
                         }
                         System.out.print(i + " ");
                     }
                     System.out.print("\nSPaT Standby Done\n\n");
                 }
                 catch(Exception e){
-                    System.out.println("Oops..error");
+                    System.out.println("Oops..error: " + e);
                 }
             }
         };
@@ -519,7 +681,7 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
             @Override
             public void execute(StateContext<States, Events> context) {
                 // do something
-                System.out.print("\nDevice Deactivated\n");
+                System.out.print("\nDevice Deactivated\n\n");
                 //machine.stop();
                 //context.getStateMachine().stop();
             }
