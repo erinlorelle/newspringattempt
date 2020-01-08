@@ -1,3 +1,12 @@
+/**
+ *  Author:         Erin L Cook
+ *  Last Revised:   1/8/2020
+ *  Title:          Spring state machine
+ *  Purpose:        Middleware for GLOSA SPaT Capstone
+ */
+
+
+
 package com.example.springattempt;
 
 import lombok.extern.java.Log;
