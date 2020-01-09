@@ -25,7 +25,9 @@ Spring state machine - middleware for SPaT capstone
 We use [BitBucket](http://bitbucket.org/) for versioning. A copy has been uploaded to GitHub. For the versions available, see the [newspringattempt](https://github.com/erinlorelle/newspringattempt). 
 
 ## Authors
-* **Erin L Cook** - [erinlorelle](https://github.com/erinlorelle)
+newspringattempt was created by **Erin L Cook**, a graduate student at East Tennessee State University
+* [https://github.com/erinlorelle](https://github.com/erinlorelle)
+* [https://erinlorelle.com](https://erinlorelle)
 
 ## Acknowledgments
 This is part of ETSU's Capstone GLOSA SpaT project.  This file is the middleware between the Android UI and the Java backend.  This was created solo, but colleagues are expected to assist in Spring 2020.
