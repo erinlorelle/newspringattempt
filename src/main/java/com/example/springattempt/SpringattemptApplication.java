@@ -364,8 +364,7 @@ class SimpleEnumStatemachineConfiguration extends StateMachineConfigurerAdapter<
         };
     }
     
-    
-    
+
     /*******************************************************************
      * The following are ACTIONS that are called from the above states
      *******************************************************************/
