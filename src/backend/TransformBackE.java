@@ -25,7 +25,7 @@ import edu.etsu.glosa.glosa.backend.models.Lane;
 import edu.etsu.glosa.glosa.backend.models.LaneDirection;
 import edu.etsu.glosa.glosa.backend.models.TrafficLight;*/
 
-public class Transform implements iTransform {
+public class TransformBackE implements iTransformBackE {
     /*private Context mContext;
     private ITrafficSignaledIntersectionService mTrafficSignaledIntersectionService;
     private SPAT spat;
@@ -36,9 +36,9 @@ public class Transform implements iTransform {
     public Transform(Context context, ITrafficSignaledIntersectionService trafficSignaledIntersectionService) {
         mContext = context;
         mTrafficSignaledIntersectionService = trafficSignaledIntersectionService;*/
-    }
+}
 
-    //@Override
+//@Override
     /*public Intersection getSpatData(double latitude,double longitude, double orientation) throws Exception {
         try {
             SAEJ7235Message response = mTrafficSignaledIntersectionService.getSAEJ7235Message(

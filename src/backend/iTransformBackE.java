@@ -2,6 +2,6 @@
 
 //import edu.etsu.glosa.glosa.backend.models.Intersection;
 
-public interface iTransform {
+public interface iTransformBackE {
     //Intersection getSpatData(double latitude,double longitude, double orientation) throws Exception;
 }
